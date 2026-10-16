@@ -29,6 +29,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
+# -- FastAPI instance for ASGI servers / Vercel entrypoint ------
+try:
+    from webhook import app
+except ImportError:
+    app = None
+
 
 # -- Dependency Check ------------------------------------------
 
