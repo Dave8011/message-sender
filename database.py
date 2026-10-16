@@ -98,13 +98,25 @@ _initialized = False
 # -- Connection helper ----------------------------------------
 
 async def _connect() -> aiosqlite.Connection:
-    """Open a connection with WAL mode and foreign keys enabled."""
+    """Open a connection with foreign keys enabled and fallback."""
     global _initialized
     if not _initialized:
         await init()
-    db = await aiosqlite.connect(config.DB_PATH)
-    await db.execute("PRAGMA journal_mode=WAL")
-    await db.execute("PRAGMA foreign_keys=ON")
+    try:
+        db = await aiosqlite.connect(config.DB_PATH)
+    except Exception as e:
+        logger.warning(f"Error connecting to {config.DB_PATH}: {e}, using /tmp/whatsapp_sender.db")
+        config.DB_PATH = "/tmp/whatsapp_sender.db"
+        db = await aiosqlite.connect(config.DB_PATH)
+
+    try:
+        await db.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
+    try:
+        await db.execute("PRAGMA foreign_keys=ON")
+    except Exception:
+        pass
     return db
 
 
@@ -113,10 +125,22 @@ async def _connect() -> aiosqlite.Connection:
 async def init():
     """Create tables and seed default templates."""
     global _initialized
-    db = await aiosqlite.connect(config.DB_PATH)
     try:
-        await db.execute("PRAGMA journal_mode=WAL")
-        await db.execute("PRAGMA foreign_keys=ON")
+        db = await aiosqlite.connect(config.DB_PATH)
+    except Exception as e:
+        logger.warning(f"Failed to connect to {config.DB_PATH}: {e}, falling back to /tmp/whatsapp_sender.db")
+        config.DB_PATH = "/tmp/whatsapp_sender.db"
+        db = await aiosqlite.connect(config.DB_PATH)
+
+    try:
+        try:
+            await db.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
+        try:
+            await db.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
         await db.executescript(_SCHEMA)
         for name, category, body in _DEFAULT_TEMPLATES:
             await db.execute(

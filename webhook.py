@@ -37,9 +37,12 @@ def mark_initialized():
 async def lifespan(app: FastAPI):
     global _initialized
     if not _initialized:
-        await database.init()
-        _initialized = True
-        logger.info(f"{config.BOT_NAME} v{config.BOT_VERSION} webhook server started")
+        try:
+            await database.init()
+            _initialized = True
+            logger.info(f"{config.BOT_NAME} v{config.BOT_VERSION} webhook server started")
+        except Exception as e:
+            logger.error(f"Failed to initialize database during lifespan startup: {e}", exc_info=True)
     yield
 
 
@@ -174,31 +177,49 @@ async def api_status():
 
 @app.get("/api/stats")
 async def api_stats():
-    contact_count = await database.get_contact_count()
-    campaigns = await database.get_all_campaigns()
-    stats = await database.get_send_stats()
+    try:
+        contact_count = await database.get_contact_count()
+        campaigns = await database.get_all_campaigns()
+        stats = await database.get_send_stats()
 
-    total_out = sum(stats.get(s, 0) for s in ("sent", "delivered", "read", "failed"))
-    delivered = stats.get("delivered", 0) + stats.get("read", 0)
-    rate = (delivered / total_out * 100) if total_out > 0 else 0.0
+        total_out = sum(stats.get(s, 0) for s in ("sent", "delivered", "read", "failed"))
+        delivered = stats.get("delivered", 0) + stats.get("read", 0)
+        rate = (delivered / total_out * 100) if total_out > 0 else 0.0
 
-    return {
-        "contacts": contact_count,
-        "campaigns": len(campaigns),
-        "sent": stats.get("sent", 0) + stats.get("delivered", 0) + stats.get("read", 0),
-        "delivered": stats.get("delivered", 0),
-        "read": stats.get("read", 0),
-        "failed": stats.get("failed", 0),
-        "queued": stats.get("queued", 0),
-        "total": stats.get("total", 0),
-        "delivery_rate": round(rate, 1),
-    }
+        return {
+            "contacts": contact_count,
+            "campaigns": len(campaigns),
+            "sent": stats.get("sent", 0) + stats.get("delivered", 0) + stats.get("read", 0),
+            "delivered": stats.get("delivered", 0),
+            "read": stats.get("read", 0),
+            "failed": stats.get("failed", 0),
+            "queued": stats.get("queued", 0),
+            "total": stats.get("total", 0),
+            "delivery_rate": round(rate, 1),
+        }
+    except Exception as e:
+        logger.error(f"Error in api_stats: {e}", exc_info=True)
+        return {
+            "contacts": 0,
+            "campaigns": 0,
+            "sent": 0,
+            "delivered": 0,
+            "read": 0,
+            "failed": 0,
+            "queued": 0,
+            "total": 0,
+            "delivery_rate": 0.0,
+        }
 
 
 @app.get("/api/contacts")
 async def api_contacts(limit: int = 200):
-    contacts = await database.get_all_contacts()
-    return contacts[:limit]
+    try:
+        contacts = await database.get_all_contacts()
+        return contacts[:limit]
+    except Exception as e:
+        logger.error(f"Error in api_contacts: {e}", exc_info=True)
+        return []
 
 
 @app.post("/api/contacts/import")
@@ -241,17 +262,29 @@ async def api_import_contacts(
 
 @app.get("/api/campaigns")
 async def api_campaigns():
-    return await database.get_all_campaigns()
+    try:
+        return await database.get_all_campaigns()
+    except Exception as e:
+        logger.error(f"Error in api_campaigns: {e}", exc_info=True)
+        return []
 
 
 @app.get("/api/campaigns/{campaign_id}/contacts")
 async def api_campaign_contacts(campaign_id: int):
-    return await database.get_contacts_for_campaign(campaign_id)
+    try:
+        return await database.get_contacts_for_campaign(campaign_id)
+    except Exception as e:
+        logger.error(f"Error in api_campaign_contacts: {e}", exc_info=True)
+        return []
 
 
 @app.get("/api/templates")
 async def api_templates():
-    return await database.get_all_templates()
+    try:
+        return await database.get_all_templates()
+    except Exception as e:
+        logger.error(f"Error in api_templates: {e}", exc_info=True)
+        return []
 
 
 @app.post("/api/templates")
@@ -270,7 +303,11 @@ async def api_delete_template(name: str):
 
 @app.get("/api/messages")
 async def api_messages(limit: int = 50):
-    return await database.get_recent_messages(limit)
+    try:
+        return await database.get_recent_messages(limit)
+    except Exception as e:
+        logger.error(f"Error in api_messages: {e}", exc_info=True)
+        return []
 
 
 @app.post("/api/send")

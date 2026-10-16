@@ -42,18 +42,45 @@ except ValueError:
     WEBHOOK_PORT = 8000
 
 # -- Database -------------------------------------------------
-# On Vercel serverless, root filesystem is read-only; use /tmp for sqlite unless custom DB_PATH
-if os.getenv("VERCEL") and not os.getenv("DB_PATH"):
-    DB_PATH = "/tmp/whatsapp_sender.db"
-    # shortcut: copy bundled sqlite db to /tmp on cold start; ephemeral across instances, upgrade path: Turso/Neon DB
-    if not os.path.exists(DB_PATH) and os.path.exists("whatsapp_sender.db"):
+def _resolve_db_path() -> str:
+    custom = os.getenv("DB_PATH")
+    if custom:
+        return custom
+
+    # Detect serverless environments (Vercel, AWS Lambda, Cloud Run, etc.)
+    is_serverless = bool(
+        os.getenv("VERCEL")
+        or os.getenv("VERCEL_ENV")
+        or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        or os.getenv("LAMBDA_TASK_ROOT")
+        or os.getenv("NOW_REGION")
+        or os.path.exists("/var/task")
+    )
+
+    # If not explicitly marked serverless, test whether current directory is writable
+    if not is_serverless:
         try:
-            import shutil
-            shutil.copyfile("whatsapp_sender.db", DB_PATH)
-        except Exception:
-            pass
-else:
-    DB_PATH = os.getenv("DB_PATH", "whatsapp_sender.db")
+            test_file = ".write_test"
+            with open(test_file, "w") as f:
+                f.write("ok")
+            os.remove(test_file)
+        except (IOError, OSError, PermissionError):
+            is_serverless = True
+
+    if is_serverless:
+        tmp_db = "/tmp/whatsapp_sender.db"
+        if not os.path.exists(tmp_db) and os.path.exists("whatsapp_sender.db"):
+            try:
+                import shutil
+                shutil.copyfile("whatsapp_sender.db", tmp_db)
+            except Exception:
+                pass
+        return tmp_db
+
+    return "whatsapp_sender.db"
+
+
+DB_PATH = _resolve_db_path()
 
 
 # -- Rate Limiting --------------------------------------------
