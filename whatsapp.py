@@ -110,8 +110,12 @@ class WhatsAppClient:
         data = {
             "From": from_number,
             "To": to_number,
-            "Body": body,
         }
+        stripped_body = body.strip()
+        if stripped_body.startswith("HX") and len(stripped_body) == 34 and " " not in stripped_body:
+            data["ContentSid"] = stripped_body
+        else:
+            data["Body"] = body
         auth = (config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
 
         try:
