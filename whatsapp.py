@@ -85,9 +85,23 @@ class WhatsAppClient:
     async def _send_twilio(self, to: str, body: str) -> dict:
         """Send via Twilio WhatsApp API."""
         url = f"https://api.twilio.com/2010-04-01/Accounts/{config.TWILIO_ACCOUNT_SID}/Messages.json"
-        to_number = to if to.startswith("whatsapp:") else f"whatsapp:{to}"
+        
+        # Ensure 'From' has whatsapp: prefix
+        from_number = (config.TWILIO_WHATSAPP_FROM or "").strip()
+        if from_number and not from_number.startswith("whatsapp:"):
+            from_number = f"whatsapp:{from_number}"
+
+        # Clean 'To' number: remove spaces and hyphens, ensure whatsapp: prefix with +
+        clean_to = to.strip().replace(" ", "").replace("-", "")
+        if clean_to.startswith("whatsapp:"):
+            to_number = clean_to
+        else:
+            if not clean_to.startswith("+"):
+                clean_to = f"+{clean_to}"
+            to_number = f"whatsapp:{clean_to}"
+
         data = {
-            "From": config.TWILIO_WHATSAPP_FROM,
+            "From": from_number,
             "To": to_number,
             "Body": body,
         }
@@ -102,6 +116,9 @@ class WhatsAppClient:
                 return {"sid": result.get("sid", ""), "status": "sent"}
             else:
                 error_msg = result.get("message", resp.text[:200])
+                error_code = result.get("code")
+                if error_code:
+                    error_msg = f"[{error_code}] {error_msg}"
                 logger.error(f"Twilio error for {to}: {error_msg}")
                 return {"sid": "", "status": "failed", "error": error_msg}
         except Exception as e:
