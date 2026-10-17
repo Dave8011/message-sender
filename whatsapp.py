@@ -83,22 +83,29 @@ class WhatsAppClient:
 
 
     async def _send_twilio(self, to: str, body: str) -> dict:
-        """Send via Twilio WhatsApp API."""
+        """Send via Twilio WhatsApp or SMS API."""
         url = f"https://api.twilio.com/2010-04-01/Accounts/{config.TWILIO_ACCOUNT_SID}/Messages.json"
         
-        # Ensure 'From' has whatsapp: prefix
         from_number = (config.TWILIO_WHATSAPP_FROM or "").strip()
-        if from_number and not from_number.startswith("whatsapp:"):
-            from_number = f"whatsapp:{from_number}"
-
-        # Clean 'To' number: remove spaces and hyphens, ensure whatsapp: prefix with +
         clean_to = to.strip().replace(" ", "").replace("-", "")
-        if clean_to.startswith("whatsapp:"):
-            to_number = clean_to
+
+        # Detect channel: if 'From' or 'To' specifies 'whatsapp:', use WhatsApp; otherwise use SMS
+        is_whatsapp = from_number.startswith("whatsapp:") or clean_to.startswith("whatsapp:")
+
+        if is_whatsapp:
+            if not from_number.startswith("whatsapp:"):
+                from_number = f"whatsapp:{from_number}"
+            if not clean_to.startswith("whatsapp:"):
+                if not clean_to.startswith("+"):
+                    clean_to = f"+{clean_to}"
+                to_number = f"whatsapp:{clean_to}"
+            else:
+                to_number = clean_to
         else:
+            # Regular SMS
             if not clean_to.startswith("+"):
                 clean_to = f"+{clean_to}"
-            to_number = f"whatsapp:{clean_to}"
+            to_number = clean_to
 
         data = {
             "From": from_number,
