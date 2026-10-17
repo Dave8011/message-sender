@@ -110,10 +110,6 @@ async def _connect() -> aiosqlite.Connection:
         db = await aiosqlite.connect(config.DB_PATH)
 
     try:
-        await db.execute("PRAGMA journal_mode=WAL")
-    except Exception:
-        pass
-    try:
         await db.execute("PRAGMA foreign_keys=ON")
     except Exception:
         pass
@@ -123,34 +119,42 @@ async def _connect() -> aiosqlite.Connection:
 # -- Init -----------------------------------------------------
 
 async def init():
-    """Create tables and seed default templates."""
+    """Create tables and seed default templates with graceful fallback."""
     global _initialized
-    try:
-        db = await aiosqlite.connect(config.DB_PATH)
-    except Exception as e:
-        logger.warning(f"Failed to connect to {config.DB_PATH}: {e}, falling back to /tmp/whatsapp_sender.db")
-        config.DB_PATH = "/tmp/whatsapp_sender.db"
-        db = await aiosqlite.connect(config.DB_PATH)
+    candidates = [config.DB_PATH]
+    if config.DB_PATH != "/tmp/whatsapp_sender.db":
+        candidates.append("/tmp/whatsapp_sender.db")
+    candidates.append(":memory:")
 
-    try:
+    last_error = None
+    for path in candidates:
         try:
-            await db.execute("PRAGMA journal_mode=WAL")
-        except Exception:
-            pass
-        try:
-            await db.execute("PRAGMA foreign_keys=ON")
-        except Exception:
-            pass
-        await db.executescript(_SCHEMA)
-        for name, category, body in _DEFAULT_TEMPLATES:
-            await db.execute(
-                "INSERT OR IGNORE INTO templates (name, category, body) VALUES (?, ?, ?)",
-                (name, category, body),
-            )
-        await db.commit()
-        _initialized = True
-    finally:
-        await db.close()
+            config.DB_PATH = path
+            db = await aiosqlite.connect(path)
+            try:
+                try:
+                    await db.execute("PRAGMA foreign_keys=ON")
+                except Exception:
+                    pass
+                await db.executescript(_SCHEMA)
+                for name, category, body in _DEFAULT_TEMPLATES:
+                    await db.execute(
+                        "INSERT OR IGNORE INTO templates (name, category, body) VALUES (?, ?, ?)",
+                        (name, category, body),
+                    )
+                await db.commit()
+            finally:
+                await db.close()
+            _initialized = True
+            logger.info(f"Database initialized successfully at {path}")
+            return
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Failed to initialize database at {path}: {e}")
+            continue
+
+    logger.error(f"Critical: Unable to initialize any database candidate: {last_error}")
+
 
 
 
