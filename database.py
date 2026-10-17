@@ -89,6 +89,11 @@ _DEFAULT_TEMPLATES = [
         "broadcast",
         "Bonjour {first_name}, un petit rappel de SoClose Society. N'hesitez pas a nous contacter !",
     ),
+    (
+        "twilio_sandbox_template",
+        "twilio_trial",
+        "HXfe5ab5f00277942d4d4200328b4d403c",
+    ),
 ]
 
 
